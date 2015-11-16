@@ -1,4 +1,4 @@
-#include "Ameisenfutter.h"
+#include "Application.h"
 
 #include <Windows.h>
 #include <io.h>
@@ -14,7 +14,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	freopen("CONOUT$", "w", stderr);
 	freopen("CONIN$", "r", stdin);
 
-	Ameisenfutter::Ameisenfutter a{};
+	Application a;
 	a.run();
 	return 0;
 }

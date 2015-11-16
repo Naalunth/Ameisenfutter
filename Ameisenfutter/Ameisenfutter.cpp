@@ -15,14 +15,17 @@ static const float scrollSpeed = 1.2F;
 //dampening factor on zooming
 static const float zoomDampening = 0.0001F;
 
+static const int mapWidth = 500;
+static const int mapHeight = 500;
 
-Ameisenfutter::Ameisenfutter::Ameisenfutter()
+
+Ameisenfutter::Ameisenfutter::Ameisenfutter(int numAnts, int numFoodSources, float evaporationChance)
 	:view{ sf::Vector2f{ 0.0, 0.0 }, sf::Vector2f{ 1.0, 1.0 } },
 	cameraPosition{ 250.0, 250.0 },
 	zoomFactor{ 0.0019f },
 	targetZoomFactor{ zoomFactor },
 	lastMousePosition{ 0,0 },
-	map{ 500, 500 },
+	map{ mapWidth, mapHeight, numAnts, numFoodSources, 50, evaporationChance },
 	mapViewer{ map },
 	isFullscreen{ false }
 {
@@ -30,11 +33,9 @@ Ameisenfutter::Ameisenfutter::Ameisenfutter()
 	recalculateView();
 }
 
-
 Ameisenfutter::Ameisenfutter::~Ameisenfutter()
 {
 }
-
 
 void Ameisenfutter::Ameisenfutter::renderThread(sf::RenderWindow* w)
 {
@@ -64,15 +65,29 @@ void Ameisenfutter::Ameisenfutter::renderThread(sf::RenderWindow* w)
 	}
 }
 
-void Ameisenfutter::Ameisenfutter::run()
+void Ameisenfutter::Ameisenfutter::updateThread(sf::RenderWindow * window)
 {
-	std::thread thread{ &Ameisenfutter::renderThread, this, &window };
-
 	sf::Clock deltaClock;
 	sf::Time updateTimer;
 	while (isRunning)
 	{
 		sf::Time dt = deltaClock.restart();
+		updateTimer += dt;
+		float updateRate{ 300.0f };
+		int steps = std::floor(updateTimer.asSeconds() * updateRate);
+		updateTimer -= sf::seconds(steps / updateRate);
+		if (nestPositionSet)
+			map.update(clamp(steps, 0, 1));
+	}
+}
+
+void Ameisenfutter::Ameisenfutter::run()
+{
+	std::thread renderThread{ &Ameisenfutter::renderThread, this, &window };
+	std::thread updateThread{ &Ameisenfutter::updateThread, this, &window };
+
+	while (isRunning)
+	{
 		sf::Event event;
 		while (window.pollEvent(event))
 		{
@@ -94,6 +109,14 @@ void Ameisenfutter::Ameisenfutter::run()
 
 			case sf::Event::MouseButtonPressed:
 				lastMousePosition = sf::Mouse::getPosition(window);
+				if (!nestPositionSet && event.mouseButton.button == sf::Mouse::Button::Right)
+				{
+					sf::Vector2i sfp{ window.mapPixelToCoords(lastMousePosition) };
+					ivec2 pos{ sfp.x, sfp.y };
+					if (!in_area(pos, { 0,0 }, { mapWidth - 1, mapHeight - 1 })) break;
+					map.AddNest(pos);
+					nestPositionSet = true;
+				}
 				break;
 
 			case sf::Event::MouseMoved:
@@ -109,14 +132,10 @@ void Ameisenfutter::Ameisenfutter::run()
 				break;
 			}
 		}
-		updateTimer += dt;
-		float updateRate{ 20.0f };
-		int steps = std::floor(updateTimer.asSeconds() * updateRate);
-		updateTimer -= sf::seconds(steps / updateRate);
-		map.update(steps);
 	}
 
-	thread.join();
+	renderThread.join();
+	updateThread.join();
 	window.close();
 }
 
@@ -177,4 +196,3 @@ void Ameisenfutter::Ameisenfutter::handleKeyPressEvent(const sf::Event & event)
 		break;
 	}
 }
-

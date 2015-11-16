@@ -14,7 +14,7 @@ namespace Ameisenfutter
 	class Ameisenfutter
 	{
 	public:
-		Ameisenfutter();
+		Ameisenfutter(int numAnts, int numFoodSources, float evaporationChance);
 		~Ameisenfutter();
 
 		void run();
@@ -29,9 +29,10 @@ namespace Ameisenfutter
 		void handleKeyPressEvent(const sf::Event& event);
 
 		void renderThread(sf::RenderWindow* window);
+		void updateThread(sf::RenderWindow* window);
 
 		std::atomic<bool> shouldResize = false;
-
+		std::atomic<bool> nestPositionSet = false;
 
 		Ameisenfutter::Map map;
 		Ameisenfutter::MapViewer mapViewer;

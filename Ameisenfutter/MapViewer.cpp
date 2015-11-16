@@ -5,7 +5,9 @@ enum MapFlags
 {
 	NEST = (1 << 0),
 	ANT = (1 << 1),
-	FOOD = (1 << 2)
+	FOOD = (1 << 2),
+	PHEROMONE = (1 << 3),
+	ANTWF = (1 << 4)
 };
 
 
@@ -37,6 +39,8 @@ void Ameisenfutter::MapViewer::draw(sf::RenderTarget & target, sf::RenderStates 
 	float tileSize = tileScreenSize > 6.0f ? ((tileScreenSize - 0.6f) / tileScreenSize) : lerp(1.0f, (float) (tileScreenSize - 0.6f) / tileScreenSize, clamp(tileScreenSize*0.5f - 2, 0, 1));
 	glUniform1f(glGetUniformLocation(s, "tileSize"), tileSize);
 
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo);
+
 	retrieveInternalGLMapData();
 	glDrawArrays(GL_QUADS, 0, width*height * 4);
 	updateInternalGLMapData();
@@ -52,25 +56,26 @@ void Ameisenfutter::MapViewer::createGLStuff(sf::RenderTarget & target)
 
 	glGenVertexArrays(1, &vao);
 	glGenBuffers(1, &vbo);
-	glGenBuffers(1, &vboMapData);
+	glGenBuffers(1, &ssbo);
 
 	glBindVertexArray(vao);
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
 	glEnableVertexAttribArray(2);
-	glEnableVertexAttribArray(8);
+	glEnableVertexAttribArray(3);
 
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex)*width*height * 4, 0, GL_STATIC_DRAW);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, position)));
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, middle)));
 	glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, color)));
-
-	glBindBuffer(GL_ARRAY_BUFFER, vboMapData);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(GLMapData)*width*height * 4, 0, GL_STREAM_DRAW);
-	glVertexAttribIPointer(8, 1, GL_UNSIGNED_INT, sizeof(GLMapData), reinterpret_cast<void*>(offsetof(GLMapData, flags)));
-
+	glVertexAttribIPointer(3, 1, GL_UNSIGNED_INT, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, mapDataID)));
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLMapData)*width*height, 0, GL_STREAM_DRAW);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
 	glBindVertexArray(0);
 
 	updateInternalGLMapVertices();
@@ -83,7 +88,7 @@ void Ameisenfutter::MapViewer::cleanupGLStuff(sf::RenderTarget & target)
 	if (!wasGLInitialized) return;
 	glDeleteVertexArrays(1, &vao);
 	glDeleteBuffers(1, &vbo);
-	glDeleteBuffers(1, &vboMapData);
+	glDeleteBuffers(1, &ssbo);
 }
 
 void Ameisenfutter::MapViewer::setTileScreenSize(float factor)
@@ -112,6 +117,7 @@ void Ameisenfutter::MapViewer::updateInternalGLMapVertices() const
 				quad[i].middle = { x + 0.5f, y + 0.5f };
 				//quad[i].color = { x / (float) width, y / (float) height, 0.0f, 1.0f };
 				quad[i].color = { 1.0f, 1.0f, 1.0f, 1.0f };
+				quad[i].mapDataID = y*width + x;
 			}
 		}
 	}
@@ -124,21 +130,18 @@ void Ameisenfutter::MapViewer::updateInternalGLMapVertices() const
 void Ameisenfutter::MapViewer::updateInternalGLMapData() const
 {
 	std::chrono::nanoseconds waitTime{ 1 };
-	if (copyThreadFuture.valid())
+	if (copyThreadFuture.valid() && copyThreadFuture.wait_for(waitTime) == std::future_status::timeout)
 	{
-		if (copyThreadFuture.wait_for(waitTime) == std::future_status::timeout)
-		{
-			return;
-		}
+		return;
 	}
-	if (map.shouldUpdateMapData)
+	if (map.shouldUpdateGLMapData)
 	{
-		glBindBuffer(GL_ARRAY_BUFFER, vboMapData);
-		internalMapDataVerticesPointer = reinterpret_cast<GLMapData*>(glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+		internalMapDataVerticesPointer = reinterpret_cast<GLMapData*>(glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY));
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		if (internalMapDataVerticesPointer)
 		{
-			map.shouldUpdateMapData = false;
+			map.shouldUpdateGLMapData = false;
 			copyThreadFuture = std::async(std::launch::async, &MapViewer::internalMapDataUpdateThread, this);
 		}
 	}
@@ -149,9 +152,9 @@ void Ameisenfutter::MapViewer::retrieveInternalGLMapData() const
 	if (copyThreadFuture.valid())
 	{
 		copyThreadFuture.get();
-		glBindBuffer(GL_ARRAY_BUFFER, vboMapData);
-		glUnmapBuffer(GL_ARRAY_BUFFER);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+		glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 	}
 }
@@ -164,16 +167,16 @@ void Ameisenfutter::MapViewer::internalMapDataUpdateThread() const
 	{
 		for (int y = 0, ymax = height; y < ymax; y++)
 		{
-			GLMapData* quad = &internalMapDataVerticesPointer[(y*width + x) * 4];
+			GLMapData* quad = &internalMapDataVerticesPointer[y*width + x];
 			const Map::MapData& mapdata = map.GetPoint(x, y);
 			GLuint gldata = 0u;
 			gldata += mapdata.isNest ? NEST : 0;
-			gldata += mapdata.numAnts + mapdata.numAntsWithFood > 0 ? ANT : 0;
+			gldata += mapdata.numAnts > 0 ? ANT : 0;
 			gldata += mapdata.numFood > 0 ? FOOD : 0;
-			for (int i = 0; i < 4; i++)
-			{
-				quad[i] = { gldata };
-			}
+			gldata += mapdata.numPheromone > 0 ? PHEROMONE : 0;
+			gldata += mapdata.numAntsWithFood > 0 ? ANTWF : 0;
+
+			*quad = { gldata };
 		}
 	}
 }

@@ -4,8 +4,6 @@
 #include <algorithm>
 
 
-
-
 enum Direction
 {
 	NORTH = 0,
@@ -16,6 +14,7 @@ enum Direction
 };
 
 const Direction Directions[] = { NORTH, EAST, SOUTH, WEST };
+const Direction DirectionsWithNone[] = { NORTH, EAST, SOUTH, WEST, NONE };
 const ivec2 DirectionVectorsWithNone[] = { { 0,-1 },{ 1,0 },{ 0,1 },{ -1,0 },{ 0,0 } };
 const ivec2 DirectionVectors[] = { { 0,-1 },{ 1,0 },{ 0,1 },{ -1,0 } };
 const char DirectionLetters[] = { 'N', 'E', 'S', 'W' };

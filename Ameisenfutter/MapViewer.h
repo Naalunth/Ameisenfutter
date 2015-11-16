@@ -37,6 +37,7 @@ namespace Ameisenfutter
 			std::array<GLfloat, 2> position;
 			std::array<GLfloat, 2> middle;
 			std::array<GLfloat, 4> color;
+			GLuint mapDataID;
 		};
 		struct GLMapData
 		{
@@ -57,7 +58,7 @@ namespace Ameisenfutter
 		mutable float tileScreenSize;
 		mutable GLuint vao;
 		mutable GLuint vbo;
-		mutable GLuint vboMapData;
+		mutable GLuint ssbo;
 		mutable sf::Shader shader;
 		mutable sf::Texture texture;
 		mutable sf::VertexArray internalMapArray;
