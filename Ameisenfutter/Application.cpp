@@ -90,7 +90,8 @@ void Application::transitionState(State next)
 		cin >> numFoods;
 		cout << "Enter pheromone evaporation rate (chance per step for each unit to evaporate, try 0.02):\n> ";
 		cin >> evaporationRate;
-		cout << "Right click on the map to set the nest position and start the simulation.\n";
+		cout << "Right click on the map to set the nest position and start the simulation.\n"
+			<< "Left click to pan the view, mouse wheel to zoom." << std::endl;
 		ameisenfutter = std::make_unique<Ameisenfutter::Ameisenfutter>(numAnts, numFoods, evaporationRate);
 		transitionState(SIMULATION);
 	}

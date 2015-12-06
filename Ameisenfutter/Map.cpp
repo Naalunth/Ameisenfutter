@@ -123,12 +123,13 @@ void Ameisenfutter::Map::doUpdateStep()
 	std::binomial_distribution<int> p;
 	std::vector<MapData>& newMap{ GetInactiveMapData() };
 	std::binomial_distribution<int> pheromone_dist;
-	MapData dummy;
 	ivec2 nest = { 0,0 };
 
+	//this function makes sure there are no out of bounds errors
+	MapData dummy;
 	auto getNewPoint = [&](ivec2 p) -> MapData& {return in_area(p, ivec2{ 0,0 }, ivec2{ width - 1, height - 1 }) ? newMap[p.y * width + p.x] : dummy; };
 
-	//This function returns the direction priorities on the map for all the ants
+	//This function returns the direction priorities for a given direction vector
 	auto getDirectionOrder = [&](ivec2 dir)->std::array<int, 4>
 	{
 		std::array<int, 4> P{ NORTH, EAST, SOUTH, WEST };
@@ -189,11 +190,10 @@ void Ameisenfutter::Map::doUpdateStep()
 			}
 			else //!markersNearby
 			{
-				if (max < 6)
+				if (max < 6) //avoid the binomial_distribution call, if there only a few ants in the cell
 				{
-					dist = std::uniform_int_distribution<int>{ 0,4 };
-					while (max--)
-						++res[dist(rng)];
+					const auto smalldist = std::uniform_int_distribution<int>{ 0,4 };
+					while (max--) ++res[smalldist(rng)];
 				}
 				else
 				{
@@ -256,7 +256,7 @@ void Ameisenfutter::Map::doUpdateStep()
 			if (data.numPheromone <= 1)
 				data.numPheromone = 0;
 			pheromone_dist = std::binomial_distribution<int>{ (int) data.numPheromone , 1.0 - evaporationChance };
-			ndata.numPheromone = std::floor(pheromone_dist(rng)) + (data.numAntsWithFood << 16);
+			ndata.numPheromone = std::floor(pheromone_dist(rng)) + (data.numAntsWithFood << 16); //every ant leaves 2^16 pheromones
 		}
 
 		//deliver food to nest
@@ -277,7 +277,7 @@ void Ameisenfutter::Map::doUpdateStep()
 			}
 
 			auto antDistribution = getDistribution(data.numAnts, markers, nest - it.first);
-
+			//all these calculations make sure that ants don't go out of bounds
 			if (it.first.x == 0)
 				antDistribution[EAST] += antDistribution[WEST];
 			if (it.first.x == width - 1)
